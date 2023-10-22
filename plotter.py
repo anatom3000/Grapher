@@ -48,28 +48,31 @@ class _Plotter:
         points = np.vstack((x, y)).T
         to_screen_fact = self.resolution / (2 * self.view_size) * (+1, -1)
 
-        points_on_screen = (points - self.view_position) * to_screen_fact + self.resolution / 2
+        points_on_screen = (points - self.view_position) * \
+            to_screen_fact + self.resolution / 2
 
         pygame.draw.aalines(self.screen, func.color, False, points_on_screen)
 
     def _draw_horizontal_line(self, y: float, color: (int, int, int), width: int = 1):
-        y_on_screen = (self.resolution[1] / 2) * (1 + (self.view_position[1] - y) / self.view_size[1])
+        y_on_screen = (
+            self.resolution[1] / 2) * (1 + (self.view_position[1] - y) / self.view_size[1])
 
-        pygame.draw.line(self.screen, color, (0, y_on_screen), (self.resolution[0], y_on_screen), width)
+        pygame.draw.line(self.screen, color, (0, y_on_screen),
+                         (self.resolution[0], y_on_screen), width)
 
     def _draw_vertical_line(self, x: float, color: (int, int, int), width: int = 1):
-        x_on_screen = (self.resolution[0] / 2) * (1 - (self.view_position[0] - x) / self.view_size[0])
+        x_on_screen = (
+            self.resolution[0] / 2) * (1 - (self.view_position[0] - x) / self.view_size[0])
 
-        pygame.draw.line(self.screen, color, (x_on_screen, 0), (x_on_screen, self.resolution[1]), width)
+        pygame.draw.line(self.screen, color, (x_on_screen, 0),
+                         (x_on_screen, self.resolution[1]), width)
 
     def _draw_axis(self):
         self._draw_vertical_line(0.0, AXIS_COLOR)
         self._draw_horizontal_line(0.0, AXIS_COLOR)
 
     def _calculate_spacing(self):
-        graph_extent = self.view_size[0]
-        pixel_extent = graph_extent / self.resolution[0]
-        min_extent = 100*pixel_extent
+        min_extent = 100 * self.view_size[0] / self.resolution[0]
 
         exponent = np.floor(np.log10(abs(min_extent)))
         mantissa = min_extent/10**exponent
@@ -126,23 +129,30 @@ class _Plotter:
                 return False
 
             if event.type == pygame.WINDOWRESIZED:
-                self.resolution = np.array([event.x, event.y])
+                new_resolution = np.array([event.x, event.y])
+
+                self.view_size *= new_resolution/self.resolution
+                self.resolution = new_resolution
 
             if event.type == pygame.MOUSEWHEEL:
                 if event.y == 1:
                     self.view_size /= self.zoom_step
-                    self.view_position = (self.view_position - mouse_pos)/self.zoom_step + mouse_pos
+                    self.view_position = (
+                        self.view_position - mouse_pos)/self.zoom_step + mouse_pos
                 else:
                     self.view_size *= self.zoom_step
-                    self.view_position = (self.view_position - mouse_pos)*self.zoom_step + mouse_pos
+                    self.view_position = (
+                        self.view_position - mouse_pos)*self.zoom_step + mouse_pos
 
             if event.type == pygame.MOUSEMOTION:
                 if pygame.mouse.get_pressed(3)[0]:
-                    self.view_position += event.rel / self.resolution * 2 * self.view_size * (-1, 1)
+                    self.view_position += event.rel / \
+                        self.resolution * 2 * self.view_size * (-1, 1)
 
         self._draw_screen()
 
-        pygame.display.set_caption(f"FPS: {round(self.clock.get_fps())} - {tuple(mouse_pos.round(2))}")
+        pygame.display.set_caption(
+            f"FPS: {round(self.clock.get_fps())} - {tuple(mouse_pos.round(2))}")
 
         return True
 
@@ -174,7 +184,8 @@ class _Plotter:
 
     def show(self):
         pygame.init()
-        self.screen = pygame.display.set_mode(self.resolution, pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode(
+            self.resolution, pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
 
         running = True
