@@ -3,10 +3,9 @@ from plotter import plot as plt
 import numpy as np
 
 if __name__ == "__main__":
-    plt.plot(lambda x: x+1 if x > 0 else x)
+    plt.plot(lambda x: 1 / (1 + x*x))
+    plt.plot(np.log)
 
-    plt.plot(
-        lambda x: np.sin(x),
-    )
+    print(np.arccos(2))
 
     plt.show()

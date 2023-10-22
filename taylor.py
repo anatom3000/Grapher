@@ -23,10 +23,6 @@ def taylor_loop(terms, n_iter=200):
     return f
 
 
-def randcolor():
-    return np.random.randint(120, 255, 3)
-
-
 def seq(string):
     return [{
                 "+": 1.0,
@@ -35,18 +31,17 @@ def seq(string):
             }[char] for char in string]
 
 
-FUNC_TINT = np.array([255, 0, 0])
-
 if __name__ == "__main__":
     # exp = taylor_loop("+")  # exp(x)
     # zero = taylor_loop("0")  # y = 0
     # _exp = taylor_loop("-")  # -exp(x)
 
     for f in itertools.product("+0-", repeat=3):
-        f = ''.join(f)
-        c = randcolor()
-        print(f, c)
-        plt.plot(taylor_loop(f), c, plotting_accuracy=20)
+        plt.plot(taylor_loop(''.join(f)), plotting_accuracy=20)
+
+
+    plt.plot(lambda x: x**2, plotting_accuracy=20)
+
 
     # plt.plot(taylor_loop("+00+"))
 
