@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import random
 
 import numpy as np
 import pygame
@@ -11,20 +12,27 @@ BACKGROUND_COLOR = (40, 40, 40)
 AXIS_COLOR = (124, 111, 100)
 BIG_GRID_COLOR = (80, 73, 69)
 SMALL_GRID_COLOR = (60, 56, 54)
+FUNCTION_COLORS = [
+    (204, 36, 29),
+    (152, 151, 26),
+    (215, 153, 33),
+    (69, 133, 136),
+    (177, 98, 134),
+    (104, 157, 106),
+    (214, 93, 14)
+]
 
 
 @dataclass
 class _Function:
     func: Callable[[np.ndarray[float]], np.ndarray]
     color: (int, int, int)
-    width: int
     accuracy: int
+    last_render: list[np.ndarray[(float, float)]] = None
 
 
 class _Plotter:
-    pygame.font.init()
     resolution = np.array([960, 720])
-    font = pygame.font.Font(pygame.font.get_default_font(), 12)
     zoom_step = 1.2
 
     def __init__(self):
@@ -34,24 +42,32 @@ class _Plotter:
         self.funcs = []
 
     def _graph_function(self, func: _Function):
-        x = np.linspace(self.view_position[0] - self.view_size[0], self.view_position[0] + self.view_size[0],
-                        self.resolution[0] // func.accuracy)
-        try:
-            y = func.func(x)
-        except ValueError:
-            # fallback if we cannot directly apply the function with an array
-            y = np.vectorize(func.func)(x)
+        if self.view_changed:
+            xs = np.linspace(
+                self.view_position[0] - self.view_size[0],
+                self.view_position[0] + self.view_size[0],
+                self.resolution[0] // func.accuracy
+            )
 
-        if isinstance(y, float):
-            y *= np.vectorize(func.func)(x)
+            try:
+                ys = func.func(xs)
+            except ValueError:
+                # fallback if we cannot directly apply the function with an array
+                ys = np.vectorize(func.func)(xs)
 
-        points = np.vstack((x, y)).T
+            if isinstance(ys, float):
+                ys *= np.vectorize(func.func)(xs)
+
+            points = np.vstack((xs, ys)).T
+            # TODO: split data at points of discontinuity to prevent aymptotes
+
+            func.last_render = [points]
+
         to_screen_fact = self.resolution / (2 * self.view_size) * (+1, -1)
-
-        points_on_screen = (points - self.view_position) * \
-            to_screen_fact + self.resolution / 2
-
-        pygame.draw.aalines(self.screen, func.color, False, points_on_screen)
+        half_resolution = self.resolution / 2
+        for batch in func.last_render:
+            batch_on_screen = (batch - self.view_position)*to_screen_fact + half_resolution
+            pygame.draw.aalines(self.screen, func.color, False, batch_on_screen)
 
     def _draw_horizontal_line(self, y: float, color: (int, int, int), width: int = 1):
         y_on_screen = (
@@ -121,7 +137,7 @@ class _Plotter:
     def _to_plane_position(self, screen_pos: np.ndarray):
         return self.view_position + self.view_size * (2 * screen_pos / self.resolution - 1) * (1, -1)
 
-    def _update(self):
+    def _update(self) -> bool:
         mouse_pos = self._to_plane_position(np.array(pygame.mouse.get_pos()))
 
         for event in pygame.event.get():
@@ -133,6 +149,7 @@ class _Plotter:
 
                 self.view_size *= new_resolution/self.resolution
                 self.resolution = new_resolution
+                self.view_changed = True
 
             if event.type == pygame.MOUSEWHEEL:
                 if event.y == 1:
@@ -143,50 +160,46 @@ class _Plotter:
                     self.view_size *= self.zoom_step
                     self.view_position = (
                         self.view_position - mouse_pos)*self.zoom_step + mouse_pos
+                self.view_changed = True
 
             if event.type == pygame.MOUSEMOTION:
                 if pygame.mouse.get_pressed(3)[0]:
-                    self.view_position += event.rel / \
-                        self.resolution * 2 * self.view_size * (-1, 1)
+                    self.view_position += event.rel \
+                        / self.resolution \
+                        * 2 * self.view_size \
+                        * (-1, 1)
+                    self.view_changed = True
 
         self._draw_screen()
 
         pygame.display.set_caption(
-            f"FPS: {round(self.clock.get_fps())} - {tuple(mouse_pos.round(2))}")
+            f"FPS: {round(self.clock.get_fps())} - {tuple(mouse_pos.round(2))}"
+        )
 
+        self.view_changed = False
         return True
 
     def plot(self,
              func: Callable[[np.ndarray[float]], np.ndarray],
              color: (int, int, int) = None,
-             line_width: int = 1,
              plotting_accuracy: int = 1
              ):
 
         if color is None:
-            import random
-            color = random.choice([
-                (204, 36, 29),
-                (152, 151, 26),
-                (215, 153, 33),
-                (69, 133, 136),
-                (177, 98, 134),
-                (104, 157, 106),
-                (214, 93, 14)
-            ])
+            color = random.choice(FUNCTION_COLORS)
 
         self.funcs.append(_Function(
             func=func,
             color=color,
-            width=line_width,
             accuracy=plotting_accuracy
         ))
 
     def show(self):
         pygame.init()
-        self.screen = pygame.display.set_mode(
-            self.resolution, pygame.RESIZABLE)
+        self.font = pygame.font.Font(pygame.font.get_default_font(), 12)
+        self.screen = pygame.display.set_mode(self.resolution, pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
+        self.view_changed = True
 
         running = True
         while running:
