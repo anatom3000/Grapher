@@ -53,14 +53,13 @@ class _Plotter:
                 ys *= np.vectorize(func.func)(xs)
 
             points = np.vstack((xs, ys)).T
-            # TODO: split data at points of discontinuity to prevent aymptotes
             func.last_render = []
             last_cut = 0
-
             for index, p in enumerate(points):
                 if not (self.view_position[1] - self.view_size[1]
                         < p[1]
                         < self.view_position[1] + self.view_size[1]):
+
                     func.last_render.append(points[last_cut:index+1])
                     last_cut = index+1
 
@@ -126,7 +125,7 @@ class _Plotter:
 
     def _draw_grid(self):
         big_hspacing, small_hspacing = self._calculate_spacing(self.view_size[0], self.resolution[1])
-        big_vspacing, small_vspacing = self._calculate_spacing(self.view_size[1], self.resolution[1])
+        big_vspacing, small_vspacing = self._calculate_spacing(self.view_size[1]*self.resolution[0]/self.resolution[1], self.resolution[1])
         self._draw_grid_with_spacing(small_hspacing, small_vspacing, SMALL_GRID_COLOR)
         self._draw_grid_with_spacing(big_vspacing, big_vspacing, BIG_GRID_COLOR)
 
