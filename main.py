@@ -4,7 +4,9 @@ import numpy as np
 
 
 if __name__ == "__main__":
-    rand = lambda x: np.random.random(len(x))
-    plt.plot(lambda x: x*x+0.2*rand(x))
+    plt.plot(lambda x: np.tan(x/10))
+    plt.plot(lambda x: -np.tan(x/5+2))
+    plt.plot(np.floor)
+    plt.plot(np.exp)
 
     plt.show()

@@ -33,13 +33,7 @@ class _Function:
 
 class _Plotter:
     resolution = np.array([960, 720])
-    zoom_step = 1.2
-
-    def __init__(self):
-        self.view_position = np.zeros(2, dtype=float)
-        self.view_size = np.array([4.0, 3.0], dtype=float)
-
-        self.funcs = []
+    zoom_step = 1.1
 
     def _graph_function(self, func: _Function):
         if self.view_changed:
@@ -60,12 +54,24 @@ class _Plotter:
 
             points = np.vstack((xs, ys)).T
             # TODO: split data at points of discontinuity to prevent aymptotes
+            func.last_render = []
+            last_cut = 0
 
-            func.last_render = [points]
+            for index, p in enumerate(points):
+                if not (self.view_position[1] - self.view_size[1]
+                        < p[1]
+                        < self.view_position[1] + self.view_size[1]):
+                    func.last_render.append(points[last_cut:index+1])
+                    last_cut = index+1
+
+            func.last_render.append(points[last_cut:])
 
         to_screen_fact = self.resolution / (2 * self.view_size) * (+1, -1)
         half_resolution = self.resolution / 2
         for batch in func.last_render:
+            if batch.shape[0] < 2:
+                continue
+
             batch_on_screen = (batch - self.view_position)*to_screen_fact + half_resolution
             pygame.draw.aalines(self.screen, func.color, False, batch_on_screen)
 
@@ -87,8 +93,8 @@ class _Plotter:
         self._draw_vertical_line(0.0, AXIS_COLOR)
         self._draw_horizontal_line(0.0, AXIS_COLOR)
 
-    def _calculate_spacing(self):
-        min_extent = 100 * self.view_size[0] / self.resolution[0]
+    def _calculate_spacing(self, view: float, screen: float):
+        min_extent = 100 * view / screen
 
         exponent = np.floor(np.log10(abs(min_extent)))
         mantissa = min_extent/10**exponent
@@ -100,28 +106,29 @@ class _Plotter:
                 minor = major / (4 if m == 2 else 5)
                 return major, minor
 
-    def _draw_grid_with_spacing(self, spacing: float, color: (float, float, float)):
+    def _draw_grid_with_spacing(self, hspacing: float, vspacing: float, color: (float, float, float)):
 
         screen_left_on_plane = self.view_position[0] - self.view_size[0]
         screen_right_on_plane = self.view_position[0] + self.view_size[0]
 
-        line_x = np.floor(screen_left_on_plane / spacing) * spacing
+        line_x = np.floor(screen_left_on_plane / hspacing) * hspacing
         while line_x <= screen_right_on_plane:
             self._draw_vertical_line(line_x, color)
-            line_x += spacing
+            line_x += hspacing
 
-        screen_up_on_plane = self.view_position[1] - self.view_size[0]
-        screen_down_on_plane = self.view_position[1] + self.view_size[0]
+        screen_up_on_plane = self.view_position[1] - self.view_size[1]
+        screen_down_on_plane = self.view_position[1] + self.view_size[1]
 
-        line_y = np.floor(screen_up_on_plane / spacing) * spacing
+        line_y = np.floor(screen_up_on_plane / vspacing) * vspacing
         while line_y <= screen_down_on_plane:
             self._draw_horizontal_line(line_y, color)
-            line_y += spacing
+            line_y += vspacing
 
     def _draw_grid(self):
-        big_spacing, small_spacing = self._calculate_spacing()
-        self._draw_grid_with_spacing(small_spacing, SMALL_GRID_COLOR)
-        self._draw_grid_with_spacing(big_spacing, BIG_GRID_COLOR)
+        big_hspacing, small_hspacing = self._calculate_spacing(self.view_size[0], self.resolution[1])
+        big_vspacing, small_vspacing = self._calculate_spacing(self.view_size[1], self.resolution[1])
+        self._draw_grid_with_spacing(small_hspacing, small_vspacing, SMALL_GRID_COLOR)
+        self._draw_grid_with_spacing(big_vspacing, big_vspacing, BIG_GRID_COLOR)
 
     def _draw_screen(self):
         self.screen.fill(BACKGROUND_COLOR)
@@ -154,12 +161,10 @@ class _Plotter:
             if event.type == pygame.MOUSEWHEEL:
                 if event.y == 1:
                     self.view_size /= self.zoom_step
-                    self.view_position = (
-                        self.view_position - mouse_pos)/self.zoom_step + mouse_pos
+                    self.view_position = (self.view_position - mouse_pos)/self.zoom_step + mouse_pos
                 else:
                     self.view_size *= self.zoom_step
-                    self.view_position = (
-                        self.view_position - mouse_pos)*self.zoom_step + mouse_pos
+                    self.view_position = (self.view_position - mouse_pos)*self.zoom_step + mouse_pos
                 self.view_changed = True
 
             if event.type == pygame.MOUSEMOTION:
@@ -173,11 +178,18 @@ class _Plotter:
         self._draw_screen()
 
         pygame.display.set_caption(
-            f"FPS: {round(self.clock.get_fps())} - {tuple(mouse_pos.round(2))}"
+            f"FPS: {round(self.clock.get_fps())}"
         )
 
         self.view_changed = False
         return True
+
+    # PUBLIC API
+    def __init__(self):
+        self.view_position = np.zeros(2, dtype=float)
+        self.view_size = np.array([4.0, 3.0], dtype=float)
+
+        self.funcs = []
 
     def plot(self,
              func: Callable[[np.ndarray[float]], np.ndarray],
