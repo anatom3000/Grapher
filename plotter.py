@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import random
 
 import numpy as np
 import pygame
@@ -13,57 +13,105 @@ AXIS_COLOR = (124, 111, 100)
 BIG_GRID_COLOR = (80, 73, 69)
 SMALL_GRID_COLOR = (60, 56, 54)
 FUNCTION_COLORS = [
-    (204, 36, 29),
-    (152, 151, 26),
-    (215, 153, 33),
-    (69, 133, 136),
-    (177, 98, 134),
-    (104, 157, 106),
-    (214, 93, 14)
+    (204, 36, 29),    # red
+    (214, 93, 14),     # orange
+    (215, 153, 33),   # yellow
+    (152, 151, 26),   # green
+    (104, 157, 106),  # green-blue
+    (69, 133, 136),   # blue
+    (177, 98, 134),   # purple
 ]
 
 
-@dataclass
-class _Function:
-    func: Callable[[np.ndarray[float]], np.ndarray]
-    color: (int, int, int)
-    accuracy: int
+PyFunction = Callable[[np.ndarray[float]], np.ndarray]
+
+
+class Function(ABC):
     last_render: list[np.ndarray[(float, float)]] = None
+    color: (int, int, int)
+
+    @abstractmethod
+    def render(self, plotter: _Plotter):
+        pass
+
+
+@dataclass
+class CartesianFunction(Function):
+    func: PyFunction
+    color: (int, int, int)
+    last_render: list[np.ndarray[(float, float)]] = None
+
+    def render(self, plotter: _Plotter):
+        xs = np.linspace(
+            plotter.view_position[0] - plotter.view_size[0],
+            plotter.view_position[0] + plotter.view_size[0],
+            plotter.resolution[0]
+        )
+
+        try:
+            ys = self.func(xs)
+        except ValueError:
+            # fallback if we cannot directly apply the function with an array
+            ys = np.vectorize(self.func)(xs)
+
+        if isinstance(ys, float):
+            ys *= np.vectorize(self.func)(xs)
+
+        points = np.vstack((xs, ys)).T
+        self.last_render = []
+        last_cut = 0
+        for index, p in enumerate(points):
+            if not (plotter.view_position[1] - plotter.view_size[1]
+                    < p[1]
+                    < plotter.view_position[1] + plotter.view_size[1]):
+
+                self.last_render.append(points[last_cut:index+1])
+                last_cut = index+1
+
+        self.last_render.append(points[last_cut:])
+
+
+@dataclass
+class PolarFunction(Function):
+    func: PyFunction
+    color: (int, int, int)
+    turns: float = 1.0
+
+    def render(self, plotter: _Plotter):
+        thetas = np.linspace(0, 2*self.turns*np.pi, plotter.resolution[0])
+
+        try:
+            rs = self.func(thetas)
+        except ValueError:
+            # fallback if we cannot directly apply the function with an array
+            rs = np.vectorize(self.func)(thetas)
+
+        if isinstance(rs, float):
+            rs *= np.vectorize(self.func)(thetas)
+
+        xs = rs * np.cos(thetas)
+        ys = rs * np.sin(thetas)
+        points = np.vstack((xs, ys)).T
+        self.last_render = []
+        last_cut = 0
+        for index, p in enumerate(points):
+            if not (plotter.view_position[1] - plotter.view_size[1]
+                    < p[1]
+                    < plotter.view_position[1] + plotter.view_size[1]):
+
+                self.last_render.append(points[last_cut:index+1])
+                last_cut = index+1
+
+        self.last_render.append(points[last_cut:])
 
 
 class _Plotter:
     resolution = np.array([960, 720])
     zoom_step = 1.1
 
-    def _graph_function(self, func: _Function):
+    def _graph_function(self, func: Function):
         if self.view_changed:
-            xs = np.linspace(
-                self.view_position[0] - self.view_size[0],
-                self.view_position[0] + self.view_size[0],
-                self.resolution[0] // func.accuracy
-            )
-
-            try:
-                ys = func.func(xs)
-            except ValueError:
-                # fallback if we cannot directly apply the function with an array
-                ys = np.vectorize(func.func)(xs)
-
-            if isinstance(ys, float):
-                ys *= np.vectorize(func.func)(xs)
-
-            points = np.vstack((xs, ys)).T
-            func.last_render = []
-            last_cut = 0
-            for index, p in enumerate(points):
-                if not (self.view_position[1] - self.view_size[1]
-                        < p[1]
-                        < self.view_position[1] + self.view_size[1]):
-
-                    func.last_render.append(points[last_cut:index+1])
-                    last_cut = index+1
-
-            func.last_render.append(points[last_cut:])
+            func.render(self)
 
         to_screen_fact = self.resolution / (2 * self.view_size) * (+1, -1)
         half_resolution = self.resolution / 2
@@ -189,21 +237,44 @@ class _Plotter:
         self.view_size = np.array([4.0, 3.0], dtype=float)
 
         self.funcs = []
+        self.next_available_color = 0
 
-    def plot(self,
-             func: Callable[[np.ndarray[float]], np.ndarray],
-             color: (int, int, int) = None,
-             plotting_accuracy: int = 1
-             ):
+    def plot(self, function: Function):
+        self.funcs.append(function)
+
+    def plot_cartesian(
+            self,
+            func: Callable[[np.ndarray[float]], np.ndarray],
+            color: (int, int, int) = None
+            ):
 
         if color is None:
-            color = random.choice(FUNCTION_COLORS)
+            color = FUNCTION_COLORS[self.next_available_color]
+            self.next_available_color = (self.next_available_color + 1) % len(FUNCTION_COLORS)
 
-        self.funcs.append(_Function(
+        self.plot(CartesianFunction(
             func=func,
             color=color,
-            accuracy=plotting_accuracy
         ))
+
+    def plot_polar(
+            self,
+            func: Callable[[np.ndarray[float]], np.ndarray],
+            color: (int, int, int) = None,
+            turns: float = 1.0
+            ):
+
+        if color is None:
+            color = FUNCTION_COLORS[self.next_available_color]
+            self.next_available_color = (self.next_available_color + 1) % len(FUNCTION_COLORS)
+
+        self.plot(PolarFunction(
+            func=func,
+            color=color,
+            turns=turns
+        ))
+
+
 
     def show(self):
         pygame.init()
@@ -222,4 +293,4 @@ class _Plotter:
 
 plot = _Plotter()
 
-__all__ = ["plot"]
+__all__ = ["plot", "next_available_color"]
