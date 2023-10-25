@@ -23,9 +23,6 @@ FUNCTION_COLORS = [
 ]
 
 
-PyFunction = Callable[[np.ndarray[float]], np.ndarray]
-
-
 class Function(ABC):
     last_render: list[np.ndarray[(float, float)]] = None
     color: (int, int, int)
@@ -37,9 +34,8 @@ class Function(ABC):
 
 @dataclass
 class CartesianFunction(Function):
-    func: PyFunction
+    func: Callable[[float], float]
     color: (int, int, int)
-    last_render: list[np.ndarray[(float, float)]] = None
 
     def render(self, plotter: _Plotter):
         xs = np.linspace(
@@ -53,9 +49,6 @@ class CartesianFunction(Function):
         except ValueError:
             # fallback if we cannot directly apply the function with an array
             ys = np.vectorize(self.func)(xs)
-
-        if isinstance(ys, float):
-            ys *= np.vectorize(self.func)(xs)
 
         points = np.vstack((xs, ys)).T
         self.last_render = []
@@ -73,8 +66,9 @@ class CartesianFunction(Function):
 
 @dataclass
 class PolarFunction(Function):
-    func: PyFunction
+    func: Callable[[float], float]
     color: (int, int, int)
+
     turns: float = 1.0
 
     def render(self, plotter: _Plotter):
@@ -86,12 +80,42 @@ class PolarFunction(Function):
             # fallback if we cannot directly apply the function with an array
             rs = np.vectorize(self.func)(thetas)
 
-        if isinstance(rs, float):
-            rs *= np.vectorize(self.func)(thetas)
-
         xs = rs * np.cos(thetas)
         ys = rs * np.sin(thetas)
         points = np.vstack((xs, ys)).T
+        self.last_render = []
+        last_cut = 0
+        for index, p in enumerate(points):
+            if not (plotter.view_position[1] - plotter.view_size[1]
+                    < p[1]
+                    < plotter.view_position[1] + plotter.view_size[1]):
+
+                self.last_render.append(points[last_cut:index+1])
+                last_cut = index+1
+
+        self.last_render.append(points[last_cut:])
+
+
+@dataclass
+class ParametricFunction(Function):
+    func: Callable[[float], (float, float)]
+    color: (int, int, int)
+
+    start: float
+    end: float
+    step: float
+
+    def render(self, plotter: _Plotter):
+        ts = np.arange(self.start, self.end, self.step)
+
+        try:
+            xs, ys = self.func(ts)
+        except ValueError:
+            # fallback if we cannot directly apply the function with an array
+            xs, ys = np.vectorize(self.func)(ts)
+
+        points = np.vstack((xs, ys)).T
+
         self.last_render = []
         last_cut = 0
         for index, p in enumerate(points):
@@ -244,7 +268,7 @@ class _Plotter:
 
     def plot_cartesian(
             self,
-            func: Callable[[np.ndarray[float]], np.ndarray],
+            func: Callable[[float], float],
             color: (int, int, int) = None
             ):
 
@@ -259,7 +283,7 @@ class _Plotter:
 
     def plot_polar(
             self,
-            func: Callable[[np.ndarray[float]], np.ndarray],
+            func: Callable[[float], float],
             color: (int, int, int) = None,
             turns: float = 1.0
             ):
@@ -274,7 +298,26 @@ class _Plotter:
             turns=turns
         ))
 
+    def plot_parametric(
+            self,
+            func: Callable[[float], (float, float)],
+            color: (int, int, int) = None,
+            start: int = 0.0,
+            end: int = 1.0,
+            step: int = 0.01,
+            ):
 
+        if color is None:
+            color = FUNCTION_COLORS[self.next_available_color]
+            self.next_available_color = (self.next_available_color + 1) % len(FUNCTION_COLORS)
+
+        self.plot(ParametricFunction(
+            func=func,
+            color=color,
+            start=start,
+            end=end,
+            step=step,
+        ))
 
     def show(self):
         pygame.init()
@@ -293,4 +336,4 @@ class _Plotter:
 
 plot = _Plotter()
 
-__all__ = ["plot", "next_available_color"]
+__all__ = ["plot"]
