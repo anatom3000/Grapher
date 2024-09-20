@@ -25,6 +25,7 @@ FUNCTION_COLORS = [
 
 class Function(ABC):
     last_render: list[np.ndarray[(float, float)]] = None
+    cache: bool
     color: (int, int, int)
 
     @abstractmethod
@@ -36,6 +37,7 @@ class Function(ABC):
 class CartesianFunction(Function):
     func: Callable[[float], float]
     color: (int, int, int)
+    cache: bool
 
     def render(self, plotter: _Plotter):
         xs = np.linspace(
@@ -67,7 +69,8 @@ class CartesianFunction(Function):
 @dataclass
 class PolarFunction(Function):
     func: Callable[[float], float]
-    color: (int, int, int)
+    ccolor: (int, int, int)
+    cache: bool
 
     turns: float = 1.0
 
@@ -100,6 +103,7 @@ class PolarFunction(Function):
 class ParametricFunction(Function):
     func: Callable[[float], (float, float)]
     color: (int, int, int)
+    cache: bool
 
     start: float
     end: float
@@ -134,7 +138,7 @@ class _Plotter:
     zoom_step = 1.1
 
     def _graph_function(self, func: Function):
-        if self.view_changed:
+        if self.view_changed or not func.cache:
             func.render(self)
 
         to_screen_fact = self.resolution / (2 * self.view_size) * (+1, -1)
@@ -255,7 +259,6 @@ class _Plotter:
         self.view_changed = False
         return True
 
-    # PUBLIC API
     def __init__(self):
         self.view_position = np.zeros(2, dtype=float)
         self.view_size = np.array([4.0, 3.0], dtype=float)
@@ -263,13 +266,15 @@ class _Plotter:
         self.funcs = []
         self.next_available_color = 0
 
+    # PUBLIC API
     def plot(self, function: Function):
         self.funcs.append(function)
 
-    def plot_cartesian(
+    def cartesian(
             self,
             func: Callable[[float], float],
-            color: (int, int, int) = None
+            color: (int, int, int) = None,
+            cache: bool = True
             ):
 
         if color is None:
@@ -279,13 +284,15 @@ class _Plotter:
         self.plot(CartesianFunction(
             func=func,
             color=color,
+            cache=cache
         ))
 
-    def plot_polar(
+    def polar(
             self,
             func: Callable[[float], float],
             color: (int, int, int) = None,
-            turns: float = 1.0
+            turns: float = 1.0,
+            cache: bool = True
             ):
 
         if color is None:
@@ -295,16 +302,18 @@ class _Plotter:
         self.plot(PolarFunction(
             func=func,
             color=color,
-            turns=turns
+            turns=turns,
+            cache=cache
         ))
 
-    def plot_parametric(
+    def parametric(
             self,
             func: Callable[[float], (float, float)],
             color: (int, int, int) = None,
             start: int = 0.0,
             end: int = 1.0,
             step: int = 0.01,
+            cache: bool = True,
             ):
 
         if color is None:
@@ -317,6 +326,7 @@ class _Plotter:
             start=start,
             end=end,
             step=step,
+            cache=cache,
         ))
 
     def show(self):
